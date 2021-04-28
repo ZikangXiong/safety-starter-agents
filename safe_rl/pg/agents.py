@@ -4,6 +4,7 @@ from safe_rl.utils.mpi_tools import mpi_avg
 from safe_rl.pg.utils import EPS
 import safe_rl.pg.trust_region as tro
 
+
 class Agent:
 
     def __init__(self, **kwargs):
@@ -29,20 +30,20 @@ class Agent:
     def ensure_satisfiable_penalty_use(self):
         reward_penalized = self.params.get('reward_penalized', False)
         objective_penalized = self.params.get('objective_penalized', False)
-        assert not(reward_penalized and objective_penalized), \
+        assert not (reward_penalized and objective_penalized), \
             "Can only use either reward_penalized OR objective_penalized, " + \
             "not both."
 
-        if not(reward_penalized or objective_penalized):
+        if not (reward_penalized or objective_penalized):
             learn_penalty = self.params.get('learn_penalty', False)
-            assert not(learn_penalty), \
+            assert not (learn_penalty), \
                 "If you are not using a penalty coefficient, you should " + \
                 "not try to learn one."
 
     def ensure_satisfiable_optimization(self):
         first_order = self.params.get('first_order', False)
         trust_region = self.params.get('trust_region', False)
-        assert not(first_order and trust_region), \
+        assert not (first_order and trust_region), \
             "Can only use either first_order OR trust_region, " + \
             "not both."
 
@@ -101,12 +102,12 @@ class Agent:
 
 
 class PPOAgent(Agent):
-    
-    def __init__(self, clip_ratio=0.2, 
-                       pi_lr=3e-4, 
-                       pi_iters=80, 
-                       kl_margin=1.2,
-                       **kwargs):
+
+    def __init__(self, clip_ratio=0.2,
+                 pi_lr=3e-4,
+                 pi_iters=80,
+                 kl_margin=1.2,
+                 **kwargs):
         super().__init__(**kwargs)
         self.clip_ratio = clip_ratio
         self.pi_lr = pi_lr
@@ -116,7 +117,7 @@ class PPOAgent(Agent):
             clipped_adv=True,
             first_order=True,
             constrained=False
-            ))
+        ))
 
     def update_pi(self, inputs):
 
@@ -130,7 +131,7 @@ class PPOAgent(Agent):
             _, kl = self.sess.run([train_pi, d_kl], feed_dict=inputs)
             kl = mpi_avg(kl)
             if kl > self.kl_margin * target_kl:
-                self.logger.log('Early stopping at step %d due to reaching max kl.'%i)
+                self.logger.log('Early stopping at step %d due to reaching max kl.' % i)
                 break
         self.logger.store(StopIter=i)
 
@@ -140,17 +141,17 @@ class PPOAgent(Agent):
 
 class TrustRegionAgent(Agent):
 
-    def __init__(self, damping_coeff=0.1, 
-                       backtrack_coeff=0.8, 
-                       backtrack_iters=10, 
-                       **kwargs):
+    def __init__(self, damping_coeff=0.1,
+                 backtrack_coeff=0.8,
+                 backtrack_iters=10,
+                 **kwargs):
         super().__init__(**kwargs)
         self.damping_coeff = damping_coeff
         self.backtrack_coeff = backtrack_coeff
         self.backtrack_iters = backtrack_iters
         self.params.update(dict(
             trust_region=True
-            ))
+        ))
 
 
 class TRPOAgent(TrustRegionAgent):
@@ -159,7 +160,7 @@ class TRPOAgent(TrustRegionAgent):
         super().__init__(**kwargs)
         self.params.update(dict(
             constrained=False
-            ))
+        ))
 
     def update_pi(self, inputs):
 
@@ -172,13 +173,13 @@ class TRPOAgent(TrustRegionAgent):
         d_kl = self.training_package['d_kl']
         target_kl = self.training_package['target_kl']
 
-        Hx = lambda x : mpi_avg(self.sess.run(hvp, feed_dict={**inputs, v_ph: x}))
+        Hx = lambda x: mpi_avg(self.sess.run(hvp, feed_dict={**inputs, v_ph: x}))
         g, pi_l_old = self.sess.run([flat_g, pi_loss], feed_dict=inputs)
         g, pi_l_old = mpi_avg(g), mpi_avg(pi_l_old)
 
         # Core calculations for TRPO or NPG
         x = tro.cg(Hx, g)
-        alpha = np.sqrt(2*target_kl/(np.dot(x, Hx(x))+EPS))
+        alpha = np.sqrt(2 * target_kl / (np.dot(x, Hx(x)) + EPS))
         old_params = self.sess.run(get_pi_params)
 
         # Save lagrange multiplier
@@ -190,13 +191,13 @@ class TRPOAgent(TrustRegionAgent):
 
         # TRPO augments NPG with backtracking line search, hard kl constraint
         for j in range(self.backtrack_iters):
-            kl, pi_l_new = set_and_eval(step=self.backtrack_coeff**j)
+            kl, pi_l_new = set_and_eval(step=self.backtrack_coeff ** j)
             if kl <= target_kl and pi_l_new <= pi_l_old:
-                self.logger.log('Accepting new params at step %d of line search.'%j)
+                self.logger.log('Accepting new params at step %d of line search.' % j)
                 self.logger.store(BacktrackIters=j)
                 break
 
-            if j==self.backtrack_iters-1:
+            if j == self.backtrack_iters - 1:
                 self.logger.log('Line search failed! Keeping old params.')
                 self.logger.store(BacktrackIters=j)
                 kl, pi_l_new = set_and_eval(step=0.)
@@ -214,10 +215,9 @@ class CPOAgent(TrustRegionAgent):
         self.params.update(dict(
             constrained=True,
             save_penalty=True
-            ))
+        ))
         self.margin = 0
         self.margin_lr = 0.05
-
 
     def update_pi(self, inputs):
 
@@ -233,13 +233,12 @@ class CPOAgent(TrustRegionAgent):
         target_kl = self.training_package['target_kl']
         cost_lim = self.training_package['cost_lim']
 
-        Hx = lambda x : mpi_avg(self.sess.run(hvp, feed_dict={**inputs, v_ph: x}))
+        Hx = lambda x: mpi_avg(self.sess.run(hvp, feed_dict={**inputs, v_ph: x}))
         outs = self.sess.run([flat_g, flat_b, pi_loss, surr_cost], feed_dict=inputs)
         outs = [mpi_avg(out) for out in outs]
         g, b, pi_l_old, surr_cost_old = outs
 
-
-        # Need old params, old policy cost gap (epcost - limit), 
+        # Need old params, old policy cost gap (epcost - limit),
         # and surr_cost rescale factor (equal to average eplen).
         old_params = self.sess.run(get_pi_params)
         c = self.logger.get_stats('EpCost')[0] - cost_lim
@@ -267,17 +266,17 @@ class CPOAgent(TrustRegionAgent):
 
         # Determine optim_case (switch condition for calculation,
         # based on geometry of constrained optimization problem)
-        if np.dot(b,b) <= 1e-8 and c < 0:
+        if np.dot(b, b) <= 1e-8 and c < 0:
             # feasible and cost grad is zero---shortcut to pure TRPO update!
             w, r, s, A, B = 0, 0, 0, 0, 0
             optim_case = 4
         else:
             # cost grad is nonzero: CPO update!
             w = tro.cg(Hx, b)
-            r = np.dot(w, approx_g)         # b^T H^{-1} g
-            s = np.dot(w, Hx(w))            # b^T H^{-1} b
-            A = q - r**2 / s                # should be always positive (Cauchy-Shwarz)
-            B = 2*target_kl - c**2 / s      # does safety boundary intersect trust region? (positive = yes)
+            r = np.dot(w, approx_g)  # b^T H^{-1} g
+            s = np.dot(w, Hx(w))  # b^T H^{-1} b
+            A = q - r ** 2 / s  # should be always positive (Cauchy-Shwarz)
+            B = 2 * target_kl - c ** 2 / s  # does safety boundary intersect trust region? (positive = yes)
 
             if c < 0 and B < 0:
                 # point in trust region is feasible and safety boundary doesn't intersect
@@ -298,31 +297,31 @@ class CPOAgent(TrustRegionAgent):
                 optim_case = 0
                 self.logger.log('Alert! Attempting infeasible recovery!', 'red')
 
-        if optim_case in [3,4]:
-            lam = np.sqrt(q / (2*target_kl))
+        if optim_case in [3, 4]:
+            lam = np.sqrt(q / (2 * target_kl))
             nu = 0
-        elif optim_case in [1,2]:
-            LA, LB = [0, r /c], [r/c, np.inf]
+        elif optim_case in [1, 2]:
+            LA, LB = [0, r / c], [r / c, np.inf]
             LA, LB = (LA, LB) if c < 0 else (LB, LA)
-            proj = lambda x, L : max(L[0], min(L[1], x))
-            lam_a = proj(np.sqrt(A/B), LA)
-            lam_b = proj(np.sqrt(q/(2*target_kl)), LB)
-            f_a = lambda lam : -0.5 * (A / (lam+EPS) + B * lam) - r*c/(s+EPS)
-            f_b = lambda lam : -0.5 * (q / (lam+EPS) + 2 * target_kl * lam)
+            proj = lambda x, L: max(L[0], min(L[1], x))
+            lam_a = proj(np.sqrt(A / B), LA)
+            lam_b = proj(np.sqrt(q / (2 * target_kl)), LB)
+            f_a = lambda lam: -0.5 * (A / (lam + EPS) + B * lam) - r * c / (s + EPS)
+            f_b = lambda lam: -0.5 * (q / (lam + EPS) + 2 * target_kl * lam)
             lam = lam_a if f_a(lam_a) >= f_b(lam_b) else lam_b
             nu = max(0, lam * c - r) / (s + EPS)
         else:
             lam = 0
-            nu = np.sqrt(2 * target_kl / (s+EPS))
+            nu = np.sqrt(2 * target_kl / (s + EPS))
 
         # normal step if optim_case > 0, but for optim_case =0,
         # perform infeasible recovery: step to purely decrease cost
-        x = (1./(lam+EPS)) * (v + nu * w) if optim_case > 0 else nu * w
+        x = (1. / (lam + EPS)) * (v + nu * w) if optim_case > 0 else nu * w
 
         # save intermediates for diagnostic purposes
         self.logger.store(Optim_A=A, Optim_B=B, Optim_c=c,
                           Optim_q=q, Optim_r=r, Optim_s=s,
-                          Optim_Lam=lam, Optim_Nu=nu, 
+                          Optim_Lam=lam, Optim_Nu=nu,
                           Penalty=nu, DeltaPenalty=0,
                           Margin=self.margin,
                           OptimCase=optim_case)
@@ -332,22 +331,21 @@ class CPOAgent(TrustRegionAgent):
             return mpi_avg(self.sess.run([d_kl, pi_loss, surr_cost], feed_dict=inputs))
 
         # CPO uses backtracking linesearch to enforce constraints
-        self.logger.log('surr_cost_old %.3f'%surr_cost_old, 'blue')
+        self.logger.log('surr_cost_old %.3f' % surr_cost_old, 'blue')
         for j in range(self.backtrack_iters):
-            kl, pi_l_new, surr_cost_new = set_and_eval(step=self.backtrack_coeff**j)
-            self.logger.log('%d \tkl %.3f \tsurr_cost_new %.3f'%(j, kl, surr_cost_new), 'blue')
+            kl, pi_l_new, surr_cost_new = set_and_eval(step=self.backtrack_coeff ** j)
+            self.logger.log('%d \tkl %.3f \tsurr_cost_new %.3f' % (j, kl, surr_cost_new), 'blue')
             if (kl <= target_kl and
-                (pi_l_new <= pi_l_old if optim_case > 1 else True) and
-                surr_cost_new - surr_cost_old <= max(-c,0)):
-                self.logger.log('Accepting new params at step %d of line search.'%j)
+                    (pi_l_new <= pi_l_old if optim_case > 1 else True) and
+                    surr_cost_new - surr_cost_old <= max(-c, 0)):
+                self.logger.log('Accepting new params at step %d of line search.' % j)
                 self.logger.store(BacktrackIters=j)
                 break
 
-            if j==self.backtrack_iters-1:
+            if j == self.backtrack_iters - 1:
                 self.logger.log('Line search failed! Keeping old params.')
                 self.logger.store(BacktrackIters=j)
                 kl, pi_l_new, surr_cost_new = set_and_eval(step=0.)
-
 
     def log(self):
         self.logger.log_tabular('Optim_A', average_only=True)

@@ -11,27 +11,34 @@ from safe_rl.utils.mpi_tools import mpi_fork, mpi_sum, proc_id, mpi_statistics_s
 
 EPS = 1e-8
 
+
 def placeholder(dim=None):
-    return tf.placeholder(dtype=tf.float32, shape=(None,dim) if dim else (None,))
+    return tf.placeholder(dtype=tf.float32, shape=(None, dim) if dim else (None,))
+
 
 def placeholders(*args):
     return [placeholder(dim) for dim in args]
+
 
 def mlp(x, hidden_sizes=(32,), activation=tf.tanh, output_activation=None):
     for h in hidden_sizes[:-1]:
         x = tf.layers.dense(x, units=h, activation=activation)
     return tf.layers.dense(x, units=hidden_sizes[-1], activation=output_activation)
 
+
 def get_vars(scope):
     return [x for x in tf.global_variables() if scope in x.name]
+
 
 def count_vars(scope):
     v = get_vars(scope)
     return sum([np.prod(var.shape.as_list()) for var in v])
 
+
 def gaussian_likelihood(x, mu, log_std):
-    pre_sum = -0.5 * (((x-mu)/(tf.exp(log_std)+EPS))**2 + 2*log_std + np.log(2*np.pi))
+    pre_sum = -0.5 * (((x - mu) / (tf.exp(log_std) + EPS)) ** 2 + 2 * log_std + np.log(2 * np.pi))
     return tf.reduce_sum(pre_sum, axis=1)
+
 
 def get_target_update(main_name, target_name, polyak):
     ''' Get a tensorflow op to update target variables based on main variables '''
@@ -42,7 +49,7 @@ def get_target_update(main_name, target_name, polyak):
         assert v_targ.startswith(target_name), f'bad var name {v_targ} for {target_name}'
         v_main = v_targ.replace(target_name, main_name, 1)
         assert v_main in main_vars, f'missing var name {v_main}'
-        assign_op = tf.assign(targ_vars[v_targ], polyak*targ_vars[v_targ] + (1-polyak)*main_vars[v_main])
+        assign_op = tf.assign(targ_vars[v_targ], polyak * targ_vars[v_targ] + (1 - polyak) * main_vars[v_main])
         assign_ops.append(assign_op)
     return tf.group(assign_ops)
 
@@ -53,6 +60,7 @@ Policies
 
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
+
 
 def mlp_gaussian_policy(x, a, hidden_sizes, activation, output_activation):
     act_dim = a.shape.as_list()[-1]
@@ -66,9 +74,10 @@ def mlp_gaussian_policy(x, a, hidden_sizes, activation, output_activation):
     logp_pi = gaussian_likelihood(pi, mu, log_std)
     return mu, pi, logp_pi
 
+
 def apply_squashing_func(mu, pi, logp_pi):
     # Adjustment to log prob
-    logp_pi -= tf.reduce_sum(2*(np.log(2) - pi - tf.nn.softplus(-2*pi)), axis=1)
+    logp_pi -= tf.reduce_sum(2 * (np.log(2) - pi - tf.nn.softplus(-2 * pi)), axis=1)
 
     # Squash those unbounded actions!
     mu = tf.tanh(mu)
@@ -79,7 +88,9 @@ def apply_squashing_func(mu, pi, logp_pi):
 """
 Actors and Critics
 """
-def mlp_actor(x, a, name='pi', hidden_sizes=(256,256), activation=tf.nn.relu,
+
+
+def mlp_actor(x, a, name='pi', hidden_sizes=(256, 256), activation=tf.nn.relu,
               output_activation=None, policy=mlp_gaussian_policy, action_space=None):
     # policy
     with tf.variable_scope(name):
@@ -94,19 +105,18 @@ def mlp_actor(x, a, name='pi', hidden_sizes=(256,256), activation=tf.nn.relu,
     return mu, pi, logp_pi
 
 
-def mlp_critic(x, a, pi, name, hidden_sizes=(256,256), activation=tf.nn.relu,
+def mlp_critic(x, a, pi, name, hidden_sizes=(256, 256), activation=tf.nn.relu,
                output_activation=None, policy=mlp_gaussian_policy, action_space=None):
-
-    fn_mlp = lambda x : tf.squeeze(mlp(x=x,
-                                       hidden_sizes=list(hidden_sizes)+[1],
-                                       activation=activation,
-                                       output_activation=None),
-                                   axis=1)
+    fn_mlp = lambda x: tf.squeeze(mlp(x=x,
+                                      hidden_sizes=list(hidden_sizes) + [1],
+                                      activation=activation,
+                                      output_activation=None),
+                                  axis=1)
     with tf.variable_scope(name):
-        critic = fn_mlp(tf.concat([x,a], axis=-1))
+        critic = fn_mlp(tf.concat([x, a], axis=-1))
 
     with tf.variable_scope(name, reuse=True):
-        critic_pi = fn_mlp(tf.concat([x,pi], axis=-1))
+        critic_pi = fn_mlp(tf.concat([x, pi], axis=-1))
 
     return critic, critic_pi
 
@@ -132,8 +142,8 @@ class ReplayBuffer:
         self.rews_buf[self.ptr] = rew
         self.costs_buf[self.ptr] = cost
         self.done_buf[self.ptr] = done
-        self.ptr = (self.ptr+1) % self.max_size
-        self.size = min(self.size+1, self.max_size)
+        self.ptr = (self.ptr + 1) % self.max_size
+        self.size = min(self.size + 1, self.max_size)
 
     def sample_batch(self, batch_size=32):
         idxs = np.random.randint(0, self.size, size=batch_size)
@@ -148,11 +158,13 @@ class ReplayBuffer:
 """
 Soft Actor-Critic
 """
+
+
 def sac(env_fn, actor_fn=mlp_actor, critic_fn=mlp_critic, ac_kwargs=dict(), seed=0,
         steps_per_epoch=1000, epochs=100, replay_size=int(1e6), gamma=0.99,
         polyak=0.995, lr=1e-4, batch_size=1024, local_start_steps=int(1e3),
         max_ep_len=1000, logger_kwargs=dict(), save_freq=10, local_update_after=int(1e3),
-        update_freq=1, render=False, 
+        update_freq=1, render=False,
         fixed_entropy_bonus=None, entropy_constraint=-1.0,
         fixed_cost_penalty=None, cost_constraint=None, cost_lim=None,
         reward_scale=1,
@@ -320,9 +332,9 @@ def sac(env_fn, actor_fn=mlp_actor, critic_fn=mlp_critic, ac_kwargs=dict(), seed
         if fixed_cost_penalty is None:
             with tf.variable_scope('costpen'):
                 soft_beta = tf.get_variable('soft_beta',
-                                             initializer=0.0,
-                                             trainable=True,
-                                             dtype=tf.float32)
+                                            initializer=0.0,
+                                            trainable=True,
+                                            dtype=tf.float32)
             beta = tf.nn.softplus(soft_beta)
             log_beta = tf.log(beta)
         else:
@@ -336,24 +348,24 @@ def sac(env_fn, actor_fn=mlp_actor, critic_fn=mlp_critic, ac_kwargs=dict(), seed
     replay_buffer = ReplayBuffer(obs_dim=obs_dim, act_dim=act_dim, size=replay_size)
 
     # Count variables
-    if proc_id()==0:
-        var_counts = tuple(count_vars(scope) for scope in 
+    if proc_id() == 0:
+        var_counts = tuple(count_vars(scope) for scope in
                            ['main/pi', 'main/qr1', 'main/qr2', 'main/qc', 'main'])
-        print(('\nNumber of parameters: \t pi: %d, \t qr1: %d, \t qr2: %d, \t qc: %d, \t total: %d\n')%var_counts)
+        print(('\nNumber of parameters: \t pi: %d, \t qr1: %d, \t qr2: %d, \t qc: %d, \t total: %d\n') % var_counts)
 
     # Min Double-Q:
     min_q_pi = tf.minimum(qr1_pi, qr2_pi)
     min_q_pi_targ = tf.minimum(qr1_pi_targ, qr2_pi_targ)
 
     # Targets for Q and V regression
-    q_backup = tf.stop_gradient(r_ph + gamma*(1-d_ph)*(min_q_pi_targ - alpha * logp_pi2))
-    qc_backup = tf.stop_gradient(c_ph + gamma*(1-d_ph)*qc_pi_targ)
+    q_backup = tf.stop_gradient(r_ph + gamma * (1 - d_ph) * (min_q_pi_targ - alpha * logp_pi2))
+    qc_backup = tf.stop_gradient(c_ph + gamma * (1 - d_ph) * qc_pi_targ)
 
     # Soft actor-critic losses
     pi_loss = tf.reduce_mean(alpha * logp_pi - min_q_pi + beta * qc_pi)
-    qr1_loss = 0.5 * tf.reduce_mean((q_backup - qr1)**2)
-    qr2_loss = 0.5 * tf.reduce_mean((q_backup - qr2)**2)
-    qc_loss = 0.5 * tf.reduce_mean((qc_backup - qc)**2)
+    qr1_loss = 0.5 * tf.reduce_mean((q_backup - qr1) ** 2)
+    qr2_loss = 0.5 * tf.reduce_mean((q_backup - qr2) ** 2)
+    qc_loss = 0.5 * tf.reduce_mean((qc_backup - qc) ** 2)
     q_loss = qr1_loss + qr2_loss + qc_loss
 
     # Loss for alpha
@@ -419,16 +431,16 @@ def sac(env_fn, actor_fn=mlp_actor, critic_fn=mlp_critic, ac_kwargs=dict(), seed
 
     # Setup model saving
     logger.setup_tf_saver(sess, inputs={'x': x_ph, 'a': a_ph},
-                                outputs={'mu': mu, 'pi': pi, 'qr1': qr1, 'qr2': qr2, 'qc': qc})
+                          outputs={'mu': mu, 'pi': pi, 'qr1': qr1, 'qr2': qr2, 'qc': qc})
 
     def get_action(o, deterministic=False):
         act_op = mu if deterministic else pi
-        return sess.run(act_op, feed_dict={x_ph: o.reshape(1,-1)})[0]
+        return sess.run(act_op, feed_dict={x_ph: o.reshape(1, -1)})[0]
 
     def test_agent(n=10):
         for j in range(n):
             o, r, d, ep_ret, ep_cost, ep_len, ep_goals, = test_env.reset(), 0, False, 0, 0, 0, 0
-            while not(d or (ep_len == max_ep_len)):
+            while not (d or (ep_len == max_ep_len)):
                 # Take deterministic actions at test time
                 o, r, d, info = test_env.step(get_action(o, True))
                 if render and proc_id() == 0 and j == 0:
@@ -481,7 +493,7 @@ def sac(env_fn, actor_fn=mlp_actor, critic_fn=mlp_critic, ac_kwargs=dict(), seed
         # Ignore the "done" signal if it comes from hitting the time
         # horizon (that is, when it's an artificial terminal signal
         # that isn't based on the agent's state)
-        d = False if ep_len==max_ep_len else d
+        d = False if ep_len == max_ep_len else d
 
         # Store experience to replay buffer
         replay_buffer.store(o, a, r, o2, d, c)
@@ -503,7 +515,7 @@ def sac(env_fn, actor_fn=mlp_actor, critic_fn=mlp_critic, ac_kwargs=dict(), seed
                              r_ph: batch['rews'],
                              c_ph: batch['costs'],
                              d_ph: batch['done'],
-                            }
+                             }
                 if t < local_update_after:
                     logger.store(**sess.run(vars_to_get, feed_dict))
                 else:
@@ -515,7 +527,7 @@ def sac(env_fn, actor_fn=mlp_actor, critic_fn=mlp_critic, ac_kwargs=dict(), seed
             epoch = t // local_steps_per_epoch
 
             # Save model
-            if (epoch % save_freq == 0) or (epoch == epochs-1):
+            if (epoch % save_freq == 0) or (epoch == epochs - 1):
                 logger.save_state({'env': env}, None)
 
             # Test the performance of the deterministic version of the agent.
@@ -555,11 +567,13 @@ def sac(env_fn, actor_fn=mlp_actor, critic_fn=mlp_critic, ac_kwargs=dict(), seed
             logger.log_tabular('PiEntropy', average_only=True)
             logger.log_tabular('TestTime', average_only=True)
             logger.log_tabular('EpochTime', average_only=True)
-            logger.log_tabular('TotalTime', time.time()-start_time)
+            logger.log_tabular('TotalTime', time.time() - start_time)
             logger.dump_tabular()
+
 
 if __name__ == '__main__':
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='Safexp-PointGoal1-v0')
     parser.add_argument('--hid', type=int, default=256)
@@ -591,10 +605,11 @@ if __name__ == '__main__':
     mpi_fork(args.cpu)
 
     from safe_rl.utils.run_utils import setup_logger_kwargs
+
     logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
 
-    sac(lambda : gym.make(args.env), actor_fn=mlp_actor, critic_fn=mlp_critic,
-        ac_kwargs=dict(hidden_sizes=[args.hid]*args.l),
+    sac(lambda: gym.make(args.env), actor_fn=mlp_actor, critic_fn=mlp_critic,
+        ac_kwargs=dict(hidden_sizes=[args.hid] * args.l),
         gamma=args.gamma, seed=args.seed, epochs=args.epochs, batch_size=args.batch_size,
         logger_kwargs=logger_kwargs, steps_per_epoch=args.steps_per_epoch,
         update_freq=args.update_freq, lr=args.lr, render=args.render,

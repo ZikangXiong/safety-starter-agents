@@ -3,16 +3,18 @@ import tensorflow as tf
 from gym.spaces import Box, Discrete
 from safe_rl.pg.utils import combined_shape, EPS
 
-
 """
 Network utils
 """
 
+
 def placeholder(dim=None):
-    return tf.placeholder(dtype=tf.float32, shape=combined_shape(None,dim))
+    return tf.placeholder(dtype=tf.float32, shape=combined_shape(None, dim))
+
 
 def placeholders(*args):
     return [placeholder(dim) for dim in args]
+
 
 def placeholder_from_space(space):
     if isinstance(space, Box):
@@ -21,50 +23,61 @@ def placeholder_from_space(space):
         return tf.placeholder(dtype=tf.int32, shape=(None,))
     raise NotImplementedError('bad space {}'.format(space))
 
+
 def placeholders_from_spaces(*args):
     return [placeholder_from_space(space) for space in args]
+
 
 def mlp(x, hidden_sizes=(32,), activation=tf.tanh, output_activation=None):
     for h in hidden_sizes[:-1]:
         x = tf.layers.dense(x, units=h, activation=activation)
     return tf.layers.dense(x, units=hidden_sizes[-1], activation=output_activation)
 
+
 def get_vars(scope=''):
     return [x for x in tf.trainable_variables() if scope in x.name]
+
 
 def count_vars(scope=''):
     v = get_vars(scope)
     return sum([np.prod(var.shape.as_list()) for var in v])
 
+
 """
 Gaussian distributions
 """
 
+
 def gaussian_likelihood(x, mu, log_std):
-    pre_sum = -0.5 * (((x-mu)/(tf.exp(log_std)+EPS))**2 + 2*log_std + np.log(2*np.pi))
+    pre_sum = -0.5 * (((x - mu) / (tf.exp(log_std) + EPS)) ** 2 + 2 * log_std + np.log(2 * np.pi))
     return tf.reduce_sum(pre_sum, axis=1)
+
 
 def gaussian_kl(mu0, log_std0, mu1, log_std1):
     """Returns average kl divergence between two batches of dists"""
     var0, var1 = tf.exp(2 * log_std0), tf.exp(2 * log_std1)
-    pre_sum = 0.5*(((mu1- mu0)**2 + var0)/(var1 + EPS) - 1) +  log_std1 - log_std0
+    pre_sum = 0.5 * (((mu1 - mu0) ** 2 + var0) / (var1 + EPS) - 1) + log_std1 - log_std0
     all_kls = tf.reduce_sum(pre_sum, axis=1)
     return tf.reduce_mean(all_kls)
 
+
 def gaussian_entropy(log_std):
     """Returns average entropy over a batch of dists"""
-    pre_sum = log_std + 0.5 * np.log(2*np.pi*np.e)
+    pre_sum = log_std + 0.5 * np.log(2 * np.pi * np.e)
     all_ents = tf.reduce_sum(pre_sum, axis=-1)
     return tf.reduce_mean(all_ents)
+
 
 """
 Categorical distributions
 """
 
+
 def categorical_kl(logp0, logp1):
     """Returns average kl divergence between two batches of dists"""
     all_kls = tf.reduce_sum(tf.exp(logp1) * (logp1 - logp0), axis=1)
     return tf.reduce_mean(all_kls)
+
 
 def categorical_entropy(logp):
     """Returns average entropy over a batch of dists"""
@@ -76,11 +89,12 @@ def categorical_entropy(logp):
 Policies
 """
 
+
 def mlp_categorical_policy(x, a, hidden_sizes, activation, output_activation, action_space):
     act_dim = action_space.n
-    logits = mlp(x, list(hidden_sizes)+[act_dim], activation, None)
+    logits = mlp(x, list(hidden_sizes) + [act_dim], activation, None)
     logp_all = tf.nn.log_softmax(logits)
-    pi = tf.squeeze(tf.multinomial(logits,1), axis=1)
+    pi = tf.squeeze(tf.multinomial(logits, 1), axis=1)
     logp = tf.reduce_sum(tf.one_hot(a, depth=act_dim) * logp_all, axis=1)
     logp_pi = tf.reduce_sum(tf.one_hot(pi, depth=act_dim) * logp_all, axis=1)
 
@@ -96,8 +110,8 @@ def mlp_categorical_policy(x, a, hidden_sizes, activation, output_activation, ac
 
 def mlp_gaussian_policy(x, a, hidden_sizes, activation, output_activation, action_space):
     act_dim = a.shape.as_list()[-1]
-    mu = mlp(x, list(hidden_sizes)+[act_dim], activation, output_activation)
-    log_std = tf.get_variable(name='log_std', initializer=-0.5*np.ones(act_dim, dtype=np.float32))
+    mu = mlp(x, list(hidden_sizes) + [act_dim], activation, output_activation)
+    log_std = tf.get_variable(name='log_std', initializer=-0.5 * np.ones(act_dim, dtype=np.float32))
     std = tf.exp(log_std)
     pi = mu + tf.random_normal(tf.shape(mu)) * std
     logp = gaussian_likelihood(a, mu, log_std)
@@ -115,6 +129,7 @@ def mlp_gaussian_policy(x, a, hidden_sizes, activation, output_activation, actio
 
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
+
 
 def mlp_squashed_gaussian_policy(x, a, hidden_sizes, activation, output_activation, action_space):
     """
@@ -136,7 +151,7 @@ def mlp_squashed_gaussian_policy(x, a, hidden_sizes, activation, output_activati
     def apply_squashing_func(log_prob, raw_action):
         # Adjustment to log prob
         act = tf.tanh(raw_action)
-        log_prob -= tf.reduce_sum(2*(np.log(2) - act - tf.nn.softplus(-2*act)), axis=1)
+        log_prob -= tf.reduce_sum(2 * (np.log(2) - act - tf.nn.softplus(-2 * act)), axis=1)
         return log_prob
 
     # Base log probs
@@ -156,13 +171,13 @@ def mlp_squashed_gaussian_policy(x, a, hidden_sizes, activation, output_activati
     return pi, logp, logp_pi, pi_info, pi_info_phs, d_kl, ent
 
 
-
 """
 Actor-Critics
 """
-def mlp_actor_critic(x, a, hidden_sizes=(64,64), activation=tf.tanh,
-                     output_activation=None, policy=None, action_space=None):
 
+
+def mlp_actor_critic(x, a, hidden_sizes=(64, 64), activation=tf.tanh,
+                     output_activation=None, policy=None, action_space=None):
     # default policy builder depends on action space
     if policy is None and isinstance(action_space, Box):
         policy = mlp_gaussian_policy
@@ -174,9 +189,9 @@ def mlp_actor_critic(x, a, hidden_sizes=(64,64), activation=tf.tanh,
         pi, logp, logp_pi, pi_info, pi_info_phs, d_kl, ent = policy_outs
 
     with tf.variable_scope('vf'):
-        v = tf.squeeze(mlp(x, list(hidden_sizes)+[1], activation, None), axis=1)
+        v = tf.squeeze(mlp(x, list(hidden_sizes) + [1], activation, None), axis=1)
 
     with tf.variable_scope('vc'):
-        vc = tf.squeeze(mlp(x, list(hidden_sizes)+[1], activation, None), axis=1)
+        vc = tf.squeeze(mlp(x, list(hidden_sizes) + [1], activation, None), axis=1)
 
     return pi, logp, logp_pi, pi_info, pi_info_phs, d_kl, ent, v, vc

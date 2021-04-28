@@ -1,16 +1,16 @@
 import numpy as np
 from safe_rl.utils.mpi_tools import mpi_statistics_scalar
 from safe_rl.pg.utils import combined_shape, \
-                             keys_as_sorted_list, \
-                             values_as_sorted_list, \
-                             discount_cumsum, \
-                             EPS
+    keys_as_sorted_list, \
+    values_as_sorted_list, \
+    discount_cumsum, \
+    EPS
 
 
 class CPOBuffer:
 
-    def __init__(self, size, 
-                 obs_shape, act_shape, pi_info_shapes, 
+    def __init__(self, size,
+                 obs_shape, act_shape, pi_info_shapes,
                  gamma=0.99, lam=0.95,
                  cost_gamma=0.99, cost_lam=0.95):
         self.obs_buf = np.zeros(combined_shape(size, obs_shape), dtype=np.float32)
@@ -19,20 +19,20 @@ class CPOBuffer:
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.ret_buf = np.zeros(size, dtype=np.float32)
         self.val_buf = np.zeros(size, dtype=np.float32)
-        self.cadv_buf = np.zeros(size, dtype=np.float32)    # cost advantage
-        self.cost_buf = np.zeros(size, dtype=np.float32)    # costs
-        self.cret_buf = np.zeros(size, dtype=np.float32)    # cost return
-        self.cval_buf = np.zeros(size, dtype=np.float32)    # cost value
+        self.cadv_buf = np.zeros(size, dtype=np.float32)  # cost advantage
+        self.cost_buf = np.zeros(size, dtype=np.float32)  # costs
+        self.cret_buf = np.zeros(size, dtype=np.float32)  # cost return
+        self.cval_buf = np.zeros(size, dtype=np.float32)  # cost value
         self.logp_buf = np.zeros(size, dtype=np.float32)
-        self.pi_info_bufs = {k: np.zeros([size] + list(v), dtype=np.float32) 
-                             for k,v in pi_info_shapes.items()}
+        self.pi_info_bufs = {k: np.zeros([size] + list(v), dtype=np.float32)
+                             for k, v in pi_info_shapes.items()}
         self.sorted_pi_info_keys = keys_as_sorted_list(self.pi_info_bufs)
         self.gamma, self.lam = gamma, lam
         self.cost_gamma, self.cost_lam = cost_gamma, cost_lam
         self.ptr, self.path_start_idx, self.max_size = 0, 0, size
 
     def store(self, obs, act, rew, val, cost, cval, logp, pi_info):
-        assert self.ptr < self.max_size     # buffer has to have room so you can store
+        assert self.ptr < self.max_size  # buffer has to have room so you can store
         self.obs_buf[self.ptr] = obs
         self.act_buf[self.ptr] = act
         self.rew_buf[self.ptr] = rew
@@ -61,7 +61,7 @@ class CPOBuffer:
         self.path_start_idx = self.ptr
 
     def get(self):
-        assert self.ptr == self.max_size    # buffer has to be full before you can get
+        assert self.ptr == self.max_size  # buffer has to be full before you can get
         self.ptr, self.path_start_idx = 0, 0
 
         # Advantage normalizing trick for policy gradient
