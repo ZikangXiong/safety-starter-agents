@@ -471,6 +471,8 @@ def run_polopt_agent(env_fn,
         # Show results!
         logger.dump_tabular()
 
+    return sess, get_action_ops["pi"], get_action_ops["pi_info"]["mu"], x_ph
+
 
 if __name__ == '__main__':
     import argparse

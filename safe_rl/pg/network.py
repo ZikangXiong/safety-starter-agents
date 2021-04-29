@@ -31,7 +31,7 @@ def placeholders_from_spaces(*args):
 def mlp(x, hidden_sizes=(32,), activation=tf.tanh, output_activation=None):
     for h in hidden_sizes[:-1]:
         x = tf.layers.dense(x, units=h, activation=activation)
-    return tf.layers.dense(x, units=hidden_sizes[-1], activation=output_activation)
+    return tf.layers.dense(x, units=hidden_sizes[-1], activation=output_activation, name="mu")
 
 
 def get_vars(scope=''):
@@ -94,7 +94,7 @@ def mlp_categorical_policy(x, a, hidden_sizes, activation, output_activation, ac
     act_dim = action_space.n
     logits = mlp(x, list(hidden_sizes) + [act_dim], activation, None)
     logp_all = tf.nn.log_softmax(logits)
-    pi = tf.squeeze(tf.multinomial(logits, 1), axis=1)
+    pi = tf.squeeze(tf.multinomial(logits, 1), axis=1, name="mu")
     logp = tf.reduce_sum(tf.one_hot(a, depth=act_dim) * logp_all, axis=1)
     logp_pi = tf.reduce_sum(tf.one_hot(pi, depth=act_dim) * logp_all, axis=1)
 
