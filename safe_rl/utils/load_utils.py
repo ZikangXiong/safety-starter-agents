@@ -54,4 +54,4 @@ def load_policy_plus(fpath, itr='last'):
     sess = tf.Session(graph=tf.Graph())
     model = restore_tf_graph(sess, osp.join(fpath, 'simple_save' + itr))
 
-    return sess, model['pi'], model['mu'], model['x']
+    return sess, model['pi'], model['mu'] if 'mu' in model.keys() else None, model['x']

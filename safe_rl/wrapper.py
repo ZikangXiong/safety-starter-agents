@@ -1,4 +1,5 @@
 import copy
+from typing import Tuple
 
 import numpy as np
 from safe_rl.pg.agents import CPOAgent
@@ -18,25 +19,28 @@ class CPO:
                  # Logging:
                  save_path=None,
                  exp_name=None,
-                 save_freq=1):
-        self.env_fn = lambda: copy.deepcopy(env)
-        cpo_kwargs = dict(
-            reward_penalized=False,  # Irrelevant in CPO
-            objective_penalized=False,  # Irrelevant in CPO
-            learn_penalty=False,  # Irrelevant in CPO
-            penalty_param_loss=False  # Irrelevant in CPO
-        )
-        self.agent = CPOAgent(**cpo_kwargs)
-        self.actor_critic_fn = actor_critic_fn
-        self.ac_kwargs = ac_kwargs
-        self.seed = seed
-        self.render = render
-
-        self.logger = None
-        self.logger_kwargs = setup_logger_kwargs(exp_name=exp_name, seed=seed, data_dir=save_path)
-        self.logger_kwargs["output_fname"] = "log.csv"
-        self.save_freq = save_freq
+                 save_freq=1,
+                 _init_model=True):
         self.sess, self.pi, self.mu, self.x_ph = None, None, None, None
+
+        if _init_model:
+            self.env_fn = lambda: copy.deepcopy(env)
+            cpo_kwargs = dict(
+                reward_penalized=False,  # Irrelevant in CPO
+                objective_penalized=False,  # Irrelevant in CPO
+                learn_penalty=False,  # Irrelevant in CPO
+                penalty_param_loss=False  # Irrelevant in CPO
+            )
+            self.agent = CPOAgent(**cpo_kwargs)
+            self.actor_critic_fn = actor_critic_fn
+            self.ac_kwargs = ac_kwargs
+            self.seed = seed
+            self.render = render
+
+            self.logger = None
+            self.logger_kwargs = setup_logger_kwargs(exp_name=exp_name, seed=seed, data_dir=save_path)
+            self.logger_kwargs["output_fname"] = "log.csv"
+            self.save_freq = save_freq
 
     def learn(self,
               # Experience collection:
@@ -83,21 +87,23 @@ class CPO:
                                                                   logger_kwargs=self.logger_kwargs,
                                                                   save_freq=self.save_freq)
 
-    def predict(self, obs: np.ndarray, deterministic=False) -> np.ndarray:
-        pi_val, mu_val = self.sess.run([self.pi, self.mu],
-                                       feed_dict={self.x_ph: obs[np.newaxis]})
+    def predict(self, obs: np.ndarray, deterministic=False) -> Tuple[np.ndarray, dict]:
+
         if deterministic:
-            return mu_val
-        return pi_val
+            mu_val = self.sess.run([self.mu], feed_dict={self.x_ph: obs[np.newaxis]})
+            return mu_val, {}
+        else:
+            pi_val = self.sess.run([self.pi], feed_dict={self.x_ph: obs[np.newaxis]})
+            return pi_val, {}
 
     def save(self, save_path):
         # When running, the safe_rl will store model automatically
         pass
 
     @classmethod
-    def load(cls, save_path, env):
+    def load(cls, path, env):
         # Lazy implementation: only recover policy and env
-        cpo = cls(env)
-        cpo.sess, cpo.pi, cpo.mu, cpo.x_ph = load_policy_plus(save_path)
+        cpo = cls(env, _init_model=False)
+        cpo.sess, cpo.pi, cpo.mu, cpo.x_ph = load_policy_plus(path)
 
         return cpo
